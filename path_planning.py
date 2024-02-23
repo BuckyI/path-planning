@@ -7,10 +7,18 @@ import pyswarms as ps
 from matplotlib.patches import Circle
 
 
-class Obstacle(NamedTuple):
+class Point(NamedTuple):
     x: float
     y: float
+
+
+class Obstacle(NamedTuple):
+    center: Point
     radius: float
+
+    def inside(self, point: Point) -> bool:
+        c = self.center
+        return (point.x - c.x) ** 2 + (point.y - c.y) ** 2 < self.radius**2
 
 
 class Path:
@@ -51,7 +59,7 @@ def show(path: Path, obstacles: List[Obstacle] = []):
 
     # plot obstacle
     for obstacle in obstacles:
-        circle = Circle((obstacle.x, obstacle.y), obstacle.radius)
+        circle = Circle((obstacle.center.x, obstacle.center.y), obstacle.radius)
         ax.add_patch(circle)
 
     # plot path
@@ -83,9 +91,10 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
 
 
 # setup
-obstacles = [Obstacle(3, 3, 2), Obstacle(7, 5, 1)]
+obstacles = [Obstacle(Point(3, 3), 2), Obstacle(Point(7, 5), 1)]
 waypoint_n = 5
 x_limit = (np.array([-10] * waypoint_n * 2), np.array([10] * waypoint_n * 2))
+start, end = Point(0, 0), Point(10, 10)
 
 # pso
 options = {"c1": 0.5, "c2": 0.3, "w": 0.9}
@@ -95,5 +104,5 @@ optimizer = ps.single.GlobalBestPSO(
 cost, pos = optimizer.optimize(evaluate, iters=100)
 
 # show
-path = Path(pos, (0, 0), (10, 10))
+path = Path(pos, start, end)
 show(path, obstacles)
