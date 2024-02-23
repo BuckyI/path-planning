@@ -112,19 +112,31 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
     """
 
     def path_evaluate(xy) -> float:
+        "xy: np.ndarray, shape = (n, 2)"
         # distance between points
-        distance = np.linalg.norm(np.diff(xy, axis=0), axis=1)
+        distance = np.linalg.norm(np.diff(xy, axis=0, prepend=xy[0:1]), axis=1)
         length = np.sum(distance)  # length of smoothed path
-        std_deviation = np.std(distance)  # evenly distribute the points
+
+        # colision = np.zeros(xy.shape[0])
+        # for obs in obstacles:  # Artificial Potential Field
+        #     obs_distance = np.linalg.norm(xy - np.array(obs.center), axis=1)
+        #     colision += 0.5 * np.clip(1 / obs_distance - 1 / obs.radius, 0, np.inf) ** 2
+        # colision = np.sum(colision)
+
+        # colision = 0
+        # for obs in obstacles:  # Artificial Potential Field
+        #     obs_distance = np.linalg.norm(xy - np.array(obs.center), axis=1)
+        #     colision += np.sum(obs_distance <= obs.radius)
 
         colision = np.zeros(xy.shape[0])
-        for obs in obstacles:  # Artificial Potential Field
+        for obs in obstacles:  # distance in colision
             obs_distance = np.linalg.norm(xy - np.array(obs.center), axis=1)
-            colision += 0.5 * np.clip(1 / obs_distance - 1 / obs.radius, 0, np.inf) ** 2
-        colision = np.sum(colision)
+            # path distance in colision turned to punishment
+            colision[obs_distance <= obs.radius] += distance[obs_distance <= obs.radius]
+        colision = colision.sum()
 
         # 计算距离的标准差
-        return length + length * colision + std_deviation
+        return length + length * colision
 
     n_particles, wlen = positions.shape[0], int(positions.shape[1] / 2)
 
@@ -151,7 +163,10 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
             distance_norm[i], np.column_stack((pos_x[i], pos_y[i])), bc_type="clamped"
         )
         xy = bspl(np.linspace(0, 1, int(length)))  # get a point each unit length
-        fitness[i] = path_evaluate(xy)
+
+        path_loss = path_evaluate(xy)
+        waypoints_dev_loss = np.std(distance_diff[i])  # evenly distribute the points
+        fitness[i] = path_loss + length * waypoints_dev_loss
 
     return fitness
 
@@ -166,7 +181,7 @@ if __name__ == "__main__":
     # pso
     options = {"c1": 0.5, "c2": 0.3, "w": 0.9}
     optimizer = ps.single.GlobalBestPSO(
-        n_particles=50, dimensions=2 * waypoint_n, bounds=x_limit, options=options
+        n_particles=1000, dimensions=2 * waypoint_n, bounds=x_limit, options=options
     )
     cost, pos = optimizer.optimize(evaluate, iters=200)
 
