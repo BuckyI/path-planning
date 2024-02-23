@@ -157,11 +157,14 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
     for i in range(n_particles):
         length = distance[i, -1]  # length of the path
 
-        # here take normalized distance as index x
-        # pos_x, pos_y are stacked to a matrix (wlen+2, 2)
-        bspl = make_interp_spline(
-            distance_norm[i], np.column_stack((pos_x[i], pos_y[i])), bc_type="clamped"
-        )
+        # here take normalized distance as index
+        # moreover, there are risks of duplicated value, rising ValueError
+        # so use np.unique to select
+        idx, unique_idx = np.unique(distance_norm[i], return_index=True)
+        # pos_x, pos_y are stacked to a matrix (wlen+2-?, 2)
+        pos_xy = np.column_stack((pos_x[i][unique_idx], pos_y[i][unique_idx]))
+
+        bspl = make_interp_spline(idx, pos_xy, bc_type="clamped")
         xy = bspl(np.linspace(0, 1, int(length)))  # get a point each unit length
 
         path_loss = path_evaluate(xy)
