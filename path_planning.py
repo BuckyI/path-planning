@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyswarms as ps
 from matplotlib.patches import Circle
+from pyswarms.utils.plotters import plot_contour, plot_cost_history, plot_surface
 from scipy.interpolate import make_interp_spline
 
 
@@ -85,8 +86,8 @@ def show(path: Path, obstacles: List[Obstacle] = []):
 
     # set axis limits
     ax.set_aspect("equal")
-    ax.set_xlim(min(s[0], e[0]), max(s[0], e[0]))
-    ax.set_ylim(min(s[1], e[1]), max(s[1], e[1]))
+    ax.set_xlim(min(s[0], e[0]) - 5, max(s[0], e[0]) + 5)
+    ax.set_ylim(min(s[1], e[1]) - 5, max(s[1], e[1]) + 5)
 
     # plot obstacle
     for obstacle in obstacles:
@@ -109,6 +110,22 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
     """positions: optimizer.swarm.position
     return: cost
     """
+
+    def path_evaluate(xy) -> float:
+        # distance between points
+        distance = np.linalg.norm(np.diff(xy, axis=0), axis=1)
+        length = np.sum(distance)  # length of smoothed path
+        std_deviation = np.std(distance)  # evenly distribute the points
+
+        colision = np.zeros(xy.shape[0])
+        for obs in obstacles:  # Artificial Potential Field
+            obs_distance = np.linalg.norm(xy - np.array(obs.center), axis=1)
+            colision += 0.5 * np.clip(1 / obs_distance - 1 / obs.radius, 0, np.inf) ** 2
+        colision = np.sum(colision)
+
+        # 计算距离的标准差
+        return length + length * colision + std_deviation
+
     n_particles, wlen = positions.shape[0], int(positions.shape[1] / 2)
 
     # x, y position with start and end (n_particles, wlen+2)
@@ -134,27 +151,28 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
             distance_norm[i], np.column_stack((pos_x[i], pos_y[i])), bc_type="clamped"
         )
         xy = bspl(np.linspace(0, 1, int(length)))  # get a point each unit length
-
-        # length of smoothed path
-        length = np.sum(np.linalg.norm(np.diff(xy, axis=0), axis=1))
-        fitness[i] = length
+        fitness[i] = path_evaluate(xy)
 
     return fitness
 
 
 # setup
-obstacles = [Obstacle(Point(3, 3), 2), Obstacle(Point(7, 5), 1)]
-waypoint_n = 5
-x_limit = (np.array([-10] * waypoint_n * 2), np.array([10] * waypoint_n * 2))
-start, end = Point(0, 0), Point(10, 10)
+if __name__ == "__main__":
+    obstacles = [Obstacle(Point(3, 3), 2), Obstacle(Point(7, 5), 1)]
+    waypoint_n = 10
+    x_limit = (np.array([-20] * waypoint_n * 2), np.array([20] * waypoint_n * 2))
+    start, end = Point(0, 0), Point(10, 10)
 
-# pso
-options = {"c1": 0.5, "c2": 0.3, "w": 0.9}
-optimizer = ps.single.GlobalBestPSO(
-    n_particles=50, dimensions=2 * waypoint_n, bounds=x_limit, options=options
-)
-cost, pos = optimizer.optimize(evaluate, iters=100)
+    # pso
+    options = {"c1": 0.5, "c2": 0.3, "w": 0.9}
+    optimizer = ps.single.GlobalBestPSO(
+        n_particles=50, dimensions=2 * waypoint_n, bounds=x_limit, options=options
+    )
+    cost, pos = optimizer.optimize(evaluate, iters=200)
 
-# show
-path = Path(pos, start, end)
-show(path, obstacles)
+    # show
+    path = Path(pos, start, end)
+    show(path, obstacles)
+
+    plot_cost_history(cost_history=optimizer.cost_history)
+    plt.show()
