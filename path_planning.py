@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyswarms as ps
 from matplotlib.patches import Circle
+from scipy.interpolate import make_interp_spline
 
 
 class Point(NamedTuple):
@@ -22,21 +23,49 @@ class Obstacle(NamedTuple):
 
 
 class Path:
-    def __init__(self, position: np.ndarray, start: tuple, end: tuple):
+    def __init__(self, position: np.ndarray, start: Point = None, end: Point = None):
         """
-        position: optimizer.swarm.position (waypoint_n * 2, )
-        start, end: np.ndarray (2, )
+        position: [x0, x1, x2, y0, y1, y2] like np.ndarray, optimizer.swarm.position
+        start, end: Point, insert to position if given
         """
-        self.start, self.end = start, end
+        assert len(position) % 2 == 0
+        if start is not None and end is not None:  # insert start and end
+            pl = int(position.shape[0] / 2)
+            position = np.concatenate(
+                ([start.x], position[:pl], [end.x], [start.y], position[pl:], [end.y])
+            )
         self.position = position
+        self.len = int(position.shape[0] / 2)  # 要转化成 int，否则切片会报错
+
+    @property
+    def pos_x(self) -> np.ndarray:
+        return self.position[: self.len]
+
+    @property
+    def pos_y(self) -> np.ndarray:
+        return self.position[self.len :]
 
     @cached_property
     def waypoints(self) -> np.ndarray:
-        waypoint_n = int(self.position.shape[0] / 2)  # 要转化成 int，否则会报错
-        pos_x = self.position[:waypoint_n]
-        pos_y = self.position[waypoint_n:]
-        waypoints = np.stack((pos_x, pos_y), axis=1)
-        return np.vstack((self.start, waypoints, self.end))  # not sure
+        return np.stack((self.pos_x, self.pos_y), axis=1)
+
+    @cached_property
+    def smoothed_waypoints(self) -> np.ndarray:
+        waypoints = self.waypoints
+
+        # 沿行一阶差分，得到相邻路径点之间的欧氏距离
+        # here prepend waypoints[0] before diff
+        # to assure len(di_dis) == len(waypoints) and di_dis[0] == 0
+        di_vec = np.diff(waypoints, n=1, axis=0, prepend=waypoints[0])
+        di_dis = np.linalg.norm(di_vec, axis=1)  # 相邻路径点之间的欧氏距离
+        # 先累积距离，再除以总长度，变成0-1的索引
+        di_index = np.cumsum(di_dis) / sum(di_dis)
+
+        # make spline, and interpolate every unit distance
+        spl = make_interp_spline(di_index, waypoints, bc_type="clamped")
+        t = np.linspace(0, 1, int(sum(di_dis)))
+        splined_routes = spl(t)
+        return splined_routes
 
     @cached_property
     def length(self) -> float:
@@ -48,7 +77,8 @@ def show(path: Path, obstacles: List[Obstacle] = []):
     _, ax = plt.subplots()
 
     # plot start and end
-    s, e = path.start, path.end
+    s = Point(path.pos_x[0], path.pos_y[0])
+    e = Point(path.pos_x[-1], path.pos_y[-1])
     ax.scatter(s[0], s[1], marker="x", label="start")
     ax.scatter(e[0], e[1], marker="x", label="end")
 
