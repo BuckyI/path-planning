@@ -103,21 +103,37 @@ def evaluate(positions: np.ndarray) -> np.ndarray:
     """positions: optimizer.swarm.position
     return: cost
     """
-    n_particles, waypoint_n = positions.shape[0], int(positions.shape[1] / 2)
+    n_particles, wlen = positions.shape[0], int(positions.shape[1] / 2)
 
-    # reshape matrix
-    pos_x = positions[:, :waypoint_n]
-    pos_y = positions[:, waypoint_n:]
-    positions = np.stack((pos_x, pos_y), axis=2)  # (n_particles, waypoint_n, 2)
+    # x, y position with start and end (n_particles, wlen+2)
+    ones = np.ones((n_particles, 1))
+    pos_x = np.concatenate((ones * start.x, positions[:, :wlen], ones * end.x), axis=1)
+    pos_y = np.concatenate((ones * start.y, positions[:, wlen:], ones * end.y), axis=1)
 
-    # add start and end point
-    start_point = np.zeros((n_particles, 1, 2))
-    end_point = np.ones((n_particles, 1, 2)) * 10
-    positions = np.concatenate((start_point, positions, end_point), axis=1)
+    # calculate distance of current path (for interpolated path)
+    x2 = np.diff(pos_x, n=1, axis=1, prepend=pos_x[:, 0:1])
+    y2 = np.diff(pos_y, n=1, axis=1, prepend=pos_y[:, 0:1])
+    distance_diff = np.sqrt(x2**2 + y2**2)  # (n_particles, wlen+2)
+    distance = np.cumsum(distance_diff, axis=1)  # (n_particles, wlen+2)
+    distance_norm = distance / distance[:, -1].reshape(-1, 1)  # normalize to 0-1
 
-    path_diff = positions[:, 1:] - positions[:, :-1]
-    path_lengths = np.sum(np.linalg.norm(path_diff, axis=2), axis=1)
-    return path_lengths
+    # evaluate
+    fitness = np.full(n_particles, np.inf)
+    for i in range(n_particles):
+        length = distance[i, -1]  # length of the path
+
+        # here take normalized distance as index x
+        # pos_x, pos_y are stacked to a matrix (wlen+2, 2)
+        bspl = make_interp_spline(
+            distance_norm[i], np.column_stack((pos_x[i], pos_y[i])), bc_type="clamped"
+        )
+        xy = bspl(np.linspace(0, 1, int(length)))  # get a point each unit length
+
+        # length of smoothed path
+        length = np.sum(np.linalg.norm(np.diff(xy, axis=0), axis=1))
+        fitness[i] = length
+
+    return fitness
 
 
 # setup
