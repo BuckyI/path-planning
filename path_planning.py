@@ -56,7 +56,8 @@ class Path:
         # 沿行一阶差分，得到相邻路径点之间的欧氏距离
         # here prepend waypoints[0] before diff
         # to assure len(di_dis) == len(waypoints) and di_dis[0] == 0
-        di_vec = np.diff(waypoints, n=1, axis=0, prepend=waypoints[0])
+        # to use waypoints[0:1] to obtain dimension
+        di_vec = np.diff(waypoints, n=1, axis=0, prepend=waypoints[0:1])
         di_dis = np.linalg.norm(di_vec, axis=1)  # 相邻路径点之间的欧氏距离
         # 先累积距离，再除以总长度，变成0-1的索引
         di_index = np.cumsum(di_dis) / sum(di_dis)
