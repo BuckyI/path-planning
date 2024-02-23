@@ -90,11 +90,16 @@ def show(path: Path, obstacles: List[Obstacle] = []):
 
     # plot obstacle
     for obstacle in obstacles:
-        circle = Circle((obstacle.center.x, obstacle.center.y), obstacle.radius)
+        circle = Circle(
+            (obstacle.center.x, obstacle.center.y),
+            obstacle.radius,
+            color="black",
+            alpha=0.5,
+        )
         ax.add_patch(circle)
 
     # plot path
-    ax.plot(path.waypoints[:, 0], path.waypoints[:, 1])
+    ax.plot(path.smoothed_waypoints[:, 0], path.smoothed_waypoints[:, 1])
     ax.scatter(path.waypoints[:, 0], path.waypoints[:, 1], marker="x")
 
     plt.show()
