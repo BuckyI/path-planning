@@ -1,5 +1,6 @@
 import heapq
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from collections import defaultdict, deque
+from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 
@@ -7,10 +8,6 @@ import numpy as np
 class Location(NamedTuple):
     x: float
     y: float
-
-
-def heuristic(a: Location, b: Location) -> float:
-    return np.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 
 
 class PriorityQueue:
@@ -25,6 +22,10 @@ class PriorityQueue:
 
     def get(self) -> Location:
         return heapq.heappop(self.elements)[1]
+
+
+def heuristic(a: Location, b: Location) -> float:
+    return np.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 
 
 class GridWithWeights:
@@ -58,30 +59,64 @@ class GridWithWeights:
         return results
 
 
-def a_star_search(grid: GridWithWeights, start: Location, goal: Location):
-    # 做成一个类，可以重复搜索！保存 frontier 继续搜索，如果路径已经在 camefrom 中，说明已经找到路了
-    frontier = PriorityQueue()
-    frontier.put(start, 0)
-    came_from: Dict[Location, Optional[Location]] = {}
-    cost_so_far: Dict[Location, float] = {}
-    came_from[start] = None
-    cost_so_far[start] = 0
+class AStar:
+    "A star search, from start to multiple goals"
 
-    while not frontier.empty():
-        current = frontier.get()
+    def __init__(
+        self,
+        graph: GridWithWeights,
+        start: Location,
+        heuristic: Callable[[Location, Location], float] = heuristic,
+    ):
+        self.graph = graph
+        self.heuristic = heuristic
+        self.frontier = PriorityQueue()
+        self.came_from: Dict[Location, Optional[Location]] = defaultdict(None)
+        self.cost_so_far: Dict[Location, float] = {}
 
-        if current == goal:
-            break
+        # init start point
+        self.start = start
+        self.frontier.put(start, 0)
+        self.cost_so_far[start] = 0
 
-        for next in grid.neighbors(current):
-            new_cost = cost_so_far[current] + grid.cost(current, next)
-            if next not in cost_so_far or new_cost < cost_so_far[next]:
-                cost_so_far[next] = new_cost
-                priority = new_cost + heuristic(next, goal)
-                frontier.put(next, priority)
-                came_from[next] = current
+    def reconstruct_path(self, goal: Location) -> list[Location]:
+        "get path from start to goal"
+        path = deque()
+        current = goal
+        while current != self.start:
+            path.appendleft(current)
+            current = self.came_from.get(current, None)
+            assert current is not None, "no valid path"
 
-    return came_from, cost_so_far
+        path.appendleft(self.start)
+        return list(path)
+
+    def search(self, goal: Location) -> list[Location]:
+        if goal in self.came_from:
+            return self.reconstruct_path(goal)
+
+        # resume search
+        frontier = self.frontier
+        graph = self.graph
+        cost_so_far = self.cost_so_far
+        came_from = self.came_from
+        while not frontier.empty():
+            current = frontier.get()
+
+            if current == goal:
+                # note item in frontier has been registered in came_from
+                return self.reconstruct_path(goal)
+
+            for next in graph.neighbors(current):
+                new_cost = cost_so_far[current] + graph.cost(current, next)
+                if next not in cost_so_far or new_cost < cost_so_far[next]:
+                    cost_so_far[next] = new_cost
+                    priority = new_cost + self.heuristic(next, goal)
+                    came_from[next] = current
+                    frontier.put(next, priority)
+
+        print(f"no valid path from {self.start} to {goal}")
+        return []  # no valid path
 
 
 def reconstruct_path(
@@ -172,11 +207,20 @@ if __name__ == "__main__":
 
     diagram.walls = DIAGRAM1_WALLS
 
-    start = Location(1, 1)
-    goal = Location(28, 14)
-    came_from, cost_so_far = a_star_search(diagram, start, goal)
-    draw_grid(diagram, point_to=came_from, start=start, goal=goal)
-    draw_grid(diagram, number=cost_so_far, start=start, goal=goal)
+    a_star = AStar(diagram, start=Location(1, 1))
 
-    path = reconstruct_path(came_from, start, goal)
-    draw_grid(diagram, start=start, goal=goal, path=path)
+    goal = Location(24, 3)
+    path = a_star.search(goal)
+    draw_grid(diagram, point_to=a_star.came_from, start=a_star.start, goal=goal)
+    draw_grid(diagram, number=a_star.cost_so_far, start=a_star.start, goal=goal)
+    draw_grid(diagram, start=a_star.start, goal=goal, path=path)
+
+    goal = Location(28, 14)
+    path = a_star.search(goal)
+    draw_grid(diagram, point_to=a_star.came_from, start=a_star.start, goal=goal)
+    draw_grid(diagram, number=a_star.cost_so_far, start=a_star.start, goal=goal)
+    draw_grid(diagram, start=a_star.start, goal=goal, path=path)
+
+    goal = Location(35, 14)
+    path = a_star.search(goal)
+    draw_grid(diagram, number=a_star.cost_so_far, start=a_star.start, goal=goal)
