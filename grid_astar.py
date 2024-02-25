@@ -1,6 +1,6 @@
 import heapq
 from collections import defaultdict, deque
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Protocol, Tuple
 
 import numpy as np
 
@@ -28,6 +28,12 @@ def heuristic(a: Location, b: Location) -> float:
     return np.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 
 
+class Graph(Protocol):
+    def cost(self, from_pos: Location, to_pos: Location) -> float: ...
+
+    def neighbors(self, pos: Location) -> list[Location]: ...
+
+
 class GridWithWeights:
     def __init__(self, width: int, height: int):
         self.width = width
@@ -44,7 +50,7 @@ class GridWithWeights:
     def passable(self, pos: Location):
         return pos not in self.walls
 
-    def neighbors(self, pos: Location):
+    def neighbors(self, pos: Location) -> list[Location]:
         (x, y) = pos
         results = [
             Location(x + 1, y),
@@ -56,7 +62,7 @@ class GridWithWeights:
             results.reverse()
         results = filter(self.in_bounds, results)
         results = filter(self.passable, results)
-        return results
+        return list(results)
 
 
 class AStar:
@@ -64,7 +70,7 @@ class AStar:
 
     def __init__(
         self,
-        graph: GridWithWeights,
+        graph: Graph,
         start: Location,
         heuristic: Callable[[Location, Location], float] = heuristic,
     ):
