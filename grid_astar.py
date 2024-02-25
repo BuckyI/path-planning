@@ -128,19 +128,15 @@ class AStar:
 def reconstruct_path(
     came_from: Dict[Location, Optional[Location]], start: Location, goal: Location
 ) -> list[Location]:
+    path = deque()
     current = goal
-    path = []
-
     while current != start:
-        path.append(current)
+        path.appendleft(current)
         current = came_from.get(current, None)
-        if current is None:
-            raise ValueError("no path found")
-    else:
-        path.append(start)
+        assert current is not None, "no valid path"
 
-    path.reverse()
-    return path
+    path.appendleft(start)
+    return list(path)
 
 
 def draw_grid(
