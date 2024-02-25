@@ -1,4 +1,3 @@
-import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
@@ -134,105 +133,7 @@ def a_star_search_with_fuel(graph: LayerGraph, fuel: float, charge_fuel: float =
     return _reconstruct_path(graph.goal)
 
 
-def a_star_search_with_fuel2(
-    graph: GridWithWeights,
-    start: Location,
-    goal: Location,
-    charging_points: List[Location] = [],
-    fuel: float = 10,
-    charge_fuel: float = 100,
-):
-    """
-    perform a star search in graph from start to goal
-    but with fuel as max path length limit
-    using plane grid graph
-
-    start, goal: start and goal locations
-    fuel: init fuel level, decrease in path, but refuel in charging points
-    charge_fuel: amount of fuel to refuel after reaching a charging point
-    """
-
-    frontier = PriorityQueue()
-    cost_so_far: Dict[Location, float] = {}
-    came_from: Dict[Location, Optional[Location]] = defaultdict(None)
-
-    frontier.put(start, 0)
-    cost_so_far[start] = 0
-
-    while not frontier.empty():
-        current = frontier.get()
-        if current == Location(6, 5):
-            print("found")
-        if current == goal:
-            break
-
-        # update fuel
-        fuel_times = 0
-        path = reconstruct_path(came_from, start, current)
-        for c in charging_points:
-            if c in path:
-                fuel_times += 1
-        current_fuel = fuel + fuel_times * charge_fuel
-        print(
-            f"current fuel: {current_fuel}, left:{current_fuel - cost_so_far[current]}"
-        )
-        # if current_fuel > fuel:
-        #     visualize_process(graph, start, goal, charging_points, path)
-
-        for n in graph.neighbors(current):
-            new_cost = cost_so_far[current] + graph.cost(current, n)
-            if new_cost > current_fuel:  # not reachable, skip
-                print(f"not reachable {current} -> {n}")
-                continue
-            if n not in cost_so_far or new_cost < cost_so_far[n]:
-                cost_so_far[n] = new_cost
-                came_from[n] = current
-                # here we may return if n == graph.goal to save time?
-                priority = new_cost + euclidean_distance(n, goal)
-                frontier.put(n, priority)
-    else:  # finish while loop without meeting goal
-        print("no valid path found")
-        return reconstruct_path(came_from, start, current)
-
-    return reconstruct_path(came_from, start, goal)
-
-
-def visualize_process(
-    map: GridWithWeights,
-    start: Location,
-    goal: Location,
-    charging_points: List[Location] = [],
-    path: List[Location] = [],
-):
-    # plt.ion()
-    # plt.gcf().clear()
-
-    # plt.figure(figsize=(map.width / 8, map.height / 8))
-
-    boarder = Rectangle(
-        (0, 0), map.width, map.height, edgecolor="black", facecolor="none"
-    )
-    plt.gca().add_patch(boarder)
-
-    walls_x = [w.x for w in map.walls]
-    walls_y = [w.y for w in map.walls]
-    plt.scatter(walls_x, walls_y, marker="s", color="black")
-
-    path_x = [p.x for p in path]
-    path_y = [p.y for p in path]
-    plt.plot(path_x, path_y, marker=".")
-
-    style = {"marker": "*", "zorder": 2}
-    plt.scatter(start.x, start.y, color="green", **style)
-    plt.scatter(goal.x, goal.y, color="red", **style)
-    for charging_point in charging_points:
-        plt.scatter(charging_point.x, charging_point.y, color="blue", **style)
-
-    plt.show()
-
-
 def visualize(graph: LayerGraph, path: List[Location] = []):
-
     map = graph.grid
     plt.figure(figsize=(map.width / 8, map.height / 8))
 
@@ -293,24 +194,6 @@ if __name__ == "__main__":
     )
 
     path = a_star_search_with_fuel(graph, 10, 10)
-    if path:
-        print("length", np.linalg.norm(np.diff(np.array(path), axis=0), axis=1).sum())
-    visualize(graph, path)
-
-    path = a_star_search_with_fuel2(
-        graph=diagram,
-        start=Location(1, 1),
-        goal=Location(24, 3),
-        charging_points=[
-            Location(2, 6),
-            Location(6, 5),
-            Location(20, 5),
-            Location(12, 2),
-            Location(25, 10),
-        ],
-        fuel=10,
-        charge_fuel=10,
-    )
     if path:
         print("length", np.linalg.norm(np.diff(np.array(path), axis=0), axis=1).sum())
     visualize(graph, path)
