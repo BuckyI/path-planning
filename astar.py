@@ -1,17 +1,18 @@
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
-from grid_astar import AStar, GridWithWeights, Location
+from grid_astar import AStar, GridWithWeights, Location, PriorityQueue, reconstruct_path
 
 
 def euclidean_distance(from_pos: Location, to_pos: Location) -> float:
     return np.sqrt((from_pos.x - to_pos.x) ** 2 + (from_pos.y - to_pos.y) ** 2)
 
 
-class Graph:
+class LayerGraph:
     "2-layer graph for multiple middle waypoints"
 
     def __init__(
@@ -69,14 +70,58 @@ class Graph:
         "neighbors within fuel capability"
         # here distance should >0 to exclude pos self
         within_reach = lambda p1, p2: 0 < euclidean_distance(p1, p2) <= fuel
+        # Note: goal will be the first element if in neighbors
         return [
             n
-            for n in [self.start, self.goal] + self.charging_points
+            for n in [self.goal, self.start] + self.charging_points
             if within_reach(pos, n)
         ]
 
 
-def visualize(graph: Graph, path: List[Location] = []):
+def a_star_search_with_fuel(graph: LayerGraph, fuel: float):
+    """
+    perform a star search in graph from start to goal
+    but with fuel as max path length limit
+    fuel: init fuel level, decrease in path, but refuel in charging points
+    """
+    frontier = PriorityQueue()
+    cost_so_far: Dict[Location, float] = {}
+    came_from: Dict[Location, Optional[Location]] = defaultdict(None)
+
+    start = graph.start
+    frontier.put(start, 0)
+    cost_so_far[start] = 0
+
+    while not frontier.empty():
+        current = frontier.get()
+
+        if current == graph.goal:
+            break
+
+        for n in graph.neighbors(current, fuel):
+            new_cost = cost_so_far[current] + graph.cost(current, n)
+            if new_cost > fuel:  # not reachable, skip
+                print(f"not reachable {current} -> {n}")
+                continue
+            if n not in cost_so_far or new_cost < cost_so_far[n]:
+                cost_so_far[n] = new_cost
+                came_from[n] = current
+                # here we may return if n == graph.goal to save time?
+                priority = new_cost + euclidean_distance(n, graph.goal)
+                frontier.put(n, priority)
+
+                if n in graph.charging_points:
+                    fuel += 100  # refuel
+
+    # reconstruct path
+    path = reconstruct_path(came_from, graph.start, graph.goal)
+    whole_path = []
+    for p1, p2 in zip(path[:-1], path[1:]):
+        whole_path += graph.path[(p1, p2)]
+    return whole_path
+
+
+def visualize(graph: LayerGraph, path: List[Location] = []):
     map = graph.grid
     plt.figure(figsize=(map.width / 8, map.height / 8))
 
@@ -123,15 +168,19 @@ if __name__ == "__main__":
 
     diagram.walls = DIAGRAM1_WALLS
 
-    graph = Graph(
+    graph = LayerGraph(
         diagram,
         start=Location(1, 1),
         goal=Location(24, 3),
-        charging_points=[Location(2, 6)],
+        charging_points=[Location(2, 6), Location(6, 5)],
     )
 
-    a_star = graph.a_stars[graph.start]
+    # a_star = graph.a_stars[graph.start]
 
-    path = a_star.search(graph.goal)
+    # path = a_star.search(graph.goal)
+    # visualize(graph, path)
+    # print(graph.neighbors(graph.start, 10))
+
+    path = a_star_search_with_fuel(graph, 10)
+    print("path length", np.linalg.norm(np.diff(np.array(path), axis=0), axis=1).sum())
     visualize(graph, path)
-    print(graph.neighbors(graph.start, 10))
