@@ -63,7 +63,7 @@ class Graph:
             return float("inf")
 
         # Euclidean distance
-        return np.linalg.norm(np.diff(np.array(path), axis=0), axis=1)
+        return np.linalg.norm(np.diff(np.array(path), axis=0), axis=1).sum()
 
     def neighbors(self, pos: Location, fuel: float) -> List[Location]:
         "neighbors within fuel capability"
