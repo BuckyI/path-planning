@@ -1,10 +1,14 @@
-from typing import List
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
 from grid_astar import AStar, GridWithWeights, Location
+
+
+def euclidean_distance(from_pos: Location, to_pos: Location) -> float:
+    return np.sqrt((from_pos.x - to_pos.x) ** 2 + (from_pos.y - to_pos.y) ** 2)
 
 
 class Graph:
@@ -25,18 +29,51 @@ class Graph:
         """
         self.grid = grid
 
-        assert all(
-            grid.in_bounds(c) and grid.passable(c)
-            for c in charging_points + [start, goal]
-        )
+        self.nodes = [start, goal] + charging_points
+        assert all(grid.in_bounds(c) and grid.passable(c) for c in self.nodes)
         self.start = start
         self.goal = goal
         self.charging_points = charging_points
 
-    def heuristic(self, pos: Location) -> float:
-        "heuristic of distance from current pos to goal"
-        goal = self.goal
-        return np.sqrt((pos.x - goal.x) ** 2 + (pos.y - goal.y) ** 2)
+        # (from, to) -> path
+        self.path: Dict[Tuple[Location, Location], List[Location]] = {}
+        self.a_stars: Dict[Location, AStar] = {
+            n: AStar(grid, n) for n in [start] + charging_points
+        }
+
+    def register_path(self, a: Location, b: Location, path: List[Location]):
+        "find path between a and b, empty list if no path"
+        # here we assume (a, b) and (b, a) have the same path
+        # i.e. this is undirected graph
+        self.path[(a, b)] = path
+        self.path[(b, a)] = path
+
+    def cost(self, from_pos: Location, to_pos: Location) -> float:
+        """
+        cost of path from from_pos to to_pos
+        """
+        # find path if not registered before
+        if (from_pos, to_pos) not in self.path:
+            path = self.a_stars[from_pos].search(to_pos)
+            self.register_path(from_pos, to_pos, path)
+
+        path = self.path[(from_pos, to_pos)]
+        # path with no waypoints is considered unreachable
+        if not path:
+            return float("inf")
+
+        # Euclidean distance
+        return np.linalg.norm(np.diff(np.array(path), axis=0), axis=1)
+
+    def neighbors(self, pos: Location, fuel: float) -> List[Location]:
+        "neighbors within fuel capability"
+        # here distance should >0 to exclude pos self
+        within_reach = lambda p1, p2: 0 < euclidean_distance(p1, p2) <= fuel
+        return [
+            n
+            for n in [self.start, self.goal] + self.charging_points
+            if within_reach(pos, n)
+        ]
 
 
 def visualize(graph: Graph, path: List[Location] = []):
@@ -93,8 +130,8 @@ if __name__ == "__main__":
         charging_points=[Location(2, 6)],
     )
 
-    a_star = AStar(diagram, start=Location(1, 1))
+    a_star = graph.a_stars[graph.start]
 
-    goal = Location(24, 3)
-    path = a_star.search(goal)
+    path = a_star.search(graph.goal)
     visualize(graph, path)
+    print(graph.neighbors(graph.start, 10))
