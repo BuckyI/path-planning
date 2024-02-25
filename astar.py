@@ -78,12 +78,22 @@ class LayerGraph:
         ]
 
 
-def a_star_search_with_fuel(graph: LayerGraph, fuel: float):
+def a_star_search_with_fuel(graph: LayerGraph, fuel: float, charge_fuel: float = 100):
     """
     perform a star search in graph from start to goal
     but with fuel as max path length limit
     fuel: init fuel level, decrease in path, but refuel in charging points
+    charge_fuel: amount of fuel to refuel after reaching a charging point
     """
+
+    def _reconstruct_path(current: Location) -> List[Location]:
+        "get path from start to current location"
+        path = reconstruct_path(came_from, graph.start, current)
+        whole_path = []
+        for p1, p2 in zip(path[:-1], path[1:]):
+            whole_path += graph.path[(p1, p2)]
+        return whole_path
+
     frontier = PriorityQueue()
     cost_so_far: Dict[Location, float] = {}
     came_from: Dict[Location, Optional[Location]] = defaultdict(None)
@@ -95,12 +105,19 @@ def a_star_search_with_fuel(graph: LayerGraph, fuel: float):
     while not frontier.empty():
         current = frontier.get()
 
+        # update fuel
+        fuel_times = 0
+        path = _reconstruct_path(current)
+        for c in graph.charging_points:
+            if c in path:
+                fuel_times += 1
+        current_fuel = fuel + fuel_times * charge_fuel
         if current == graph.goal:
             break
 
-        for n in graph.neighbors(current, fuel):
+        for n in graph.neighbors(current, current_fuel):
             new_cost = cost_so_far[current] + graph.cost(current, n)
-            if new_cost > fuel:  # not reachable, skip
+            if new_cost > current_fuel:  # not reachable, skip
                 print(f"not reachable {current} -> {n}")
                 continue
             if n not in cost_so_far or new_cost < cost_so_far[n]:
@@ -110,15 +127,10 @@ def a_star_search_with_fuel(graph: LayerGraph, fuel: float):
                 priority = new_cost + euclidean_distance(n, graph.goal)
                 frontier.put(n, priority)
 
-                if n in graph.charging_points:
-                    fuel += 100  # refuel
-
-    # reconstruct path
-    path = reconstruct_path(came_from, graph.start, graph.goal)
-    whole_path = []
-    for p1, p2 in zip(path[:-1], path[1:]):
-        whole_path += graph.path[(p1, p2)]
-    return whole_path
+    if current != graph.goal:
+        print("no valid path found")
+        return []
+    return _reconstruct_path(graph.goal)
 
 
 def visualize(graph: LayerGraph, path: List[Location] = []):
@@ -172,15 +184,16 @@ if __name__ == "__main__":
         diagram,
         start=Location(1, 1),
         goal=Location(24, 3),
-        charging_points=[Location(2, 6), Location(6, 5)],
+        charging_points=[
+            Location(2, 6),
+            Location(6, 5),
+            Location(20, 5),
+            Location(12, 2),
+            Location(25, 10),
+        ],
     )
 
-    # a_star = graph.a_stars[graph.start]
-
-    # path = a_star.search(graph.goal)
-    # visualize(graph, path)
-    # print(graph.neighbors(graph.start, 10))
-
-    path = a_star_search_with_fuel(graph, 10)
-    print("path length", np.linalg.norm(np.diff(np.array(path), axis=0), axis=1).sum())
+    path = a_star_search_with_fuel(graph, 10, 10)
+    if path:
+        print("length", np.linalg.norm(np.diff(np.array(path), axis=0), axis=1).sum())
     visualize(graph, path)
